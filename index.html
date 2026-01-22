@@ -2,40 +2,77 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的在线便签</title>
+    <title>Supabase 实时云便签</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { margin: 0; font-family: sans-serif; background: #f4f4f9; display: flex; justify-content: center; padding: 20px; }
-        .container { width: 100%; max-width: 800px; background: white; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
-        .header { background: #333; color: white; padding: 15px; text-align: center; font-size: 1.2rem; }
-        #note-area { width: 100%; height: 70vh; padding: 20px; border: none; outline: none; font-size: 18px; line-height: 1.6; resize: none; box-sizing: border-box; }
-        .status { padding: 10px; font-size: 12px; color: #888; text-align: right; border-top: 1px solid #eee; }
+        body { font-family: sans-serif; background: #f8fafc; display: flex; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 800px; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 500px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 16px; box-sizing: border-box; outline: none; line-height: 1.6; }
+        .footer { margin-top: 10px; font-size: 12px; color: #64748b; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="header">📝 网页随手记</div>
-    <textarea id="note-area" placeholder="在这里输入内容，会自动保存到浏览器..."></textarea>
-    <div class="status" id="status">内容已实时保存</div>
+    <h2>☁️ Supabase 云便签</h2>
+    <textarea id="editor" placeholder="正在连接数据库..."></textarea>
+    <div class="footer">
+        <span id="status">正在同步...</span>
+        <span>数据实时存储在 Supabase</span>
+    </div>
 </div>
 
 <script>
-    const noteArea = document.getElementById('note-area');
+    // ======= 请填入你的配置 =======
+    const SUPABASE_URL = 'https://icmqyrwlvrljudbeircz.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_kUx7__4qwVyFXcSrc96FZQ_9WXVlJco';
+    // =============================
+
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const editor = document.getElementById('editor');
     const status = document.getElementById('status');
 
-    // 页面加载时：读取本地存储的内容
-    window.onload = () => {
-        noteArea.value = localStorage.getItem('web_notepad_content') || '';
-    };
+    // 1. 页面加载：从数据库读取 id 为 1 的那条便签
+    async function loadNote() {
+        let { data, error } = await supabase
+            .from('notes')
+            .select('content')
+            .limit(1)
+            .single();
 
-    // 输入时：实时保存到浏览器的 LocalStorage
-    noteArea.addEventListener('input', () => {
-        localStorage.setItem('web_notepad_content', noteArea.value);
-        status.innerText = '正在保存...';
-        setTimeout(() => { status.innerText = '内容已实时保存'; }, 500);
+        if (data) {
+            editor.value = data.content;
+            status.innerText = "✅ 已加载云端最新内容";
+        } else {
+            status.innerText = "❌ 加载失败，请检查配置";
+        }
+    }
+
+    // 2. 自动保存逻辑（防抖）
+    let saveTimeout;
+    editor.addEventListener('input', () => {
+        status.innerText = "正在输入...";
+        clearTimeout(saveTimeout);
+        
+        saveTimeout = setTimeout(async () => {
+            status.innerText = "正在上传云端...";
+            
+            // 更新数据库中第一条笔记
+            const { error } = await supabase
+                .from('notes')
+                .update({ content: editor.value })
+                .neq('id', 0); // 这是一个简单的匹配所有行的技巧
+
+            if (!error) {
+                status.innerText = "☁️ 云端保存成功 " + new Date().toLocaleTimeString();
+            } else {
+                status.innerText = "⚠️ 保存出错";
+                console.error(error);
+            }
+        }, 1000); // 停止输入 1 秒后执行保存
     });
-</script>
 
+    loadNote();
+</script>
 </body>
 </html>
