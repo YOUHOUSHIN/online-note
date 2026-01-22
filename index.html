@@ -3,80 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supabase 云便签修复版</title>
+    <title>极简云同步便签</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
-        body { font-family: sans-serif; background: #f8fafc; display: flex; justify-content: center; padding: 20px; }
-        .container { width: 100%; max-width: 800px; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 500px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 16px; box-sizing: border-box; outline: none; line-height: 1.6; }
-        .footer { margin-top: 10px; font-size: 12px; color: #64748b; display: flex; justify-content: space-between; }
+        :root { --bg: #f3f4f6; --card: #ffffff; --text: #1f2937; --accent: #3b82f6; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .container { width: 100%; max-width: 800px; background: var(--card); padding: 25px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
+        textarea { 
+            width: 100%; height: 65vh; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; 
+            font-size: 16px; box-sizing: border-box; outline: none; line-height: 1.6; resize: none;
+            transition: border-color 0.2s;
+        }
+        textarea:focus { border-color: var(--accent); ring: 2px var(--accent); }
+        .footer { margin-top: 15px; font-size: 13px; color: #6b7280; display: flex; justify-content: space-between; align-items: center; }
+        .status-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; display: inline-block; margin-right: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>☁️ Supabase 云便签</h2>
-    <textarea id="editor" placeholder="正在连接数据库..."></textarea>
+    <h2><span style="font-size: 24px;">☁️</span> 云端实时便签</h2>
+    <textarea id="editor" placeholder="正在连接云端数据库..."></textarea>
     <div class="footer">
-        <span id="status">正在同步...</span>
-        <span>数据实时存储</span>
+        <div><span class="status-dot"></span> <span id="status">正在初始化...</span></div>
+        <div id="sync-time">上次同步: 未知</div>
     </div>
 </div>
 
 <script>
-    // ======= 请确保填入你找到的长 Key (以 eyJ 开头) =======
-    const CONF_URL = 'https://icmqyrwlvrljudbeircz.supabase.co';
-    const CONF_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljbXF5cndsdnJsanVkYmVpcmN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDM4NjksImV4cCI6MjA4NDU3OTg2OX0.0LK94cZykdKphd8zzETwMgsBFPM_xCIEGIevNoTdVGU'; 
-    // ===================================================
+    // ======= [配置区] 请填入你的 Supabase 信息 =======
+    const SUPABASE_URL = 'https://icmqyrwlvrljudbeircz.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImljbXF5cndsdnJsanVkYmVpcmN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwMDM4NjksImV4cCI6MjA4NDU3OTg2OX0.0LK94cZykdKphd8zzETwMgsBFPM_xCIEGIevNoTdVGU'; 
+    // ===============================================
 
-    // 修复变量名冲突：改名为 client
-    const client = supabase.createClient(CONF_URL, CONF_KEY);
+    // 1. 初始化客户端 (变量名改为 _supabase 避免冲突)
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     const editor = document.getElementById('editor');
     const status = document.getElementById('status');
+    const syncTime = document.getElementById('sync-time');
 
-    async function loadNote() {
+    // 2. 加载初始数据
+    async function loadData() {
         try {
-            status.innerText = "正在从云端读取...";
-            let { data, error } = await client
+            status.innerText = "正在读取云端数据...";
+            let { data, error } = await _supabase
                 .from('notes')
                 .select('content')
-                .eq('id', 1) // 假设你的数据 ID 是 1
+                .eq('id', 1)
                 .single();
 
             if (data) {
                 editor.value = data.content;
-                status.innerText = "✅ 已加载云端最新内容";
-            } else if (error) {
-                status.innerText = "⚠️ 未找到数据，请先在后台插入一行 ID 为 1 的数据";
-                console.error("读取错误:", error);
+                status.innerText = "已连接云端";
+                syncTime.innerText = "已加载最新版本";
+            } else {
+                status.innerText = "⚠️ 未发现 ID 为 1 的数据";
             }
         } catch (e) {
-            status.innerText = "❌ 连接失败";
+            status.innerText = "❌ 无法连接到数据库";
         }
     }
 
+    // 3. 自动保存逻辑 (防抖)
     let saveTimeout;
     editor.addEventListener('input', () => {
         status.innerText = "正在输入...";
         clearTimeout(saveTimeout);
         
         saveTimeout = setTimeout(async () => {
-            status.innerText = "正在同步到云端...";
+            status.innerText = "正在推送到云端...";
             
-            // 使用 upsert，有则更新无则插入
-            const { error } = await client
+            const { error } = await _supabase
                 .from('notes')
                 .upsert({ id: 1, content: editor.value });
 
             if (!error) {
-                status.innerText = "☁️ 云端保存成功 " + new Date().toLocaleTimeString();
+                status.innerText = "已实时保存";
+                syncTime.innerText = "上次同步: " + new Date().toLocaleTimeString();
             } else {
-                status.innerText = "❌ 保存出错: " + error.message;
+                status.innerText = "❌ 保存失败";
             }
-        }, 1000);
+        }, 1000); // 停止打字 1 秒后自动上传
     });
 
-    loadNote();
+    // 4. 实时监听：核心代码，让另一台设备自动动起来
+    const channel = _supabase
+        .channel('realtime_notes')
+        .on(
+            'postgres_changes', 
+            { event: 'UPDATE', schema: 'public', table: 'notes', filter: 'id=eq.1' }, 
+            (payload) => {
+                // 如果当前没有在打字，且云端内容变了，就强制更新
+                if (document.activeElement !== editor && payload.new.content !== editor.value) {
+                    editor.value = payload.new.content;
+                    status.innerText = "⚡ 收到远程更新";
+                    syncTime.innerText = "同步于 " + new Date().toLocaleTimeString();
+                }
+            }
+        )
+        .subscribe();
+
+    // 启动执行
+    loadData();
 </script>
 </body>
 </html>
